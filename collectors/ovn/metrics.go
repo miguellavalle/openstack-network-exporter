@@ -197,9 +197,27 @@ var ovnController = map[string]lib.Metric{
 	},
 }
 
+var ovnRouterPortTraffic = map[string]lib.Metric{
+	routerporttrafficpkts: {
+		Name:        "ovnc_router_port_traffic_pkts",
+		Description: "Number of packets transmitted and received by a logical router port labeled by the logical datapath number and the logical port number",
+		Labels:      []string{"datapath", "port"},
+		ValueType:   prometheus.GaugeValue,
+		Set:         config.METRICS_BASE,
+	},
+	"ovn-router-port-traffic-bytes": {
+		Name:        "ovnc_router_port_traffic_bytes",
+		Description: "Number of bytes transmitted and received by a logical router port labeled by the logical datapath number and the logical port number",
+		Labels:      []string{"datapath", "port"},
+		ValueType:   prometheus.GaugeValue,
+		Set:         config.METRICS_BASE,
+	},
+}
+
 var metrics = []*map[string]lib.Metric{
 	&openvSwitch,
 	&openvSwitchBoolean,
 	&openvSwitchLabels,
 	&ovnController,
+	&ovnRouterPortTraffic,
 }

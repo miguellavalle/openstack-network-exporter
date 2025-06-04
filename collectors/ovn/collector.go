@@ -15,6 +15,7 @@ import (
 	"github.com/openstack-k8s-operators/openstack-network-exporter/collectors/lib"
 	"github.com/openstack-k8s-operators/openstack-network-exporter/config"
 	"github.com/openstack-k8s-operators/openstack-network-exporter/log"
+	"github.com/openstack-k8s-operators/openstack-network-exporter/openflow"
 	"github.com/openstack-k8s-operators/openstack-network-exporter/ovsdb"
 	"github.com/openstack-k8s-operators/openstack-network-exporter/ovsdb/ovs"
 	"github.com/prometheus/client_golang/prometheus"
@@ -121,6 +122,7 @@ const (
 	packetInDrop           = "packet_in_drop"
 	dropBufferedPacketsMap = "pinctrl_drop_buffered_packets_map"
 	dropControllerEvent    = "pinctrl_drop_controller_event"
+	routerporttrafficpkts  = "ovn-router-port-traffic-pkts"
 )
 
 func isPacketInDropComponent(name string) bool {
@@ -181,6 +183,36 @@ func collectCoverageMetrics(ch chan<- prometheus.Metric) {
 	}
 }
 
+func collectLogicalRouters(ch chan<- prometheus.Metric) {
+	var value float64
+
+	rps, err := openflow.GetRouterPortsStats()
+	if err != nil {
+		log.Errf("Error getting router ports statistics: %s", err)
+		return
+	}
+
+	for _, s := range rps {
+		labels := []string{
+			strconv.FormatUint(s.DPTunnelKey, 10),
+			strconv.FormatUint(uint64(s.PortTunnelKey), 10),
+		}
+
+		for name, metric := range ovnRouterPortTraffic {
+			if !config.MetricSets().Has(metric.Set) {
+				continue
+			}
+			if name == routerporttrafficpkts {
+				value = float64(s.PacketCount)
+			} else {
+				value = float64(s.ByteCount)
+			}
+
+			ch <- prometheus.MustNewConstMetric(metric.Desc(), metric.ValueType, value, labels...)
+		}
+	}
+}
+
 type Collector struct{}
 
 func (Collector) Name() string {
@@ -218,4 +250,7 @@ func (Collector) Collect(ch chan<- prometheus.Metric) {
 
 	// collect the ovn-controller coverage metrics
 	collectCoverageMetrics(ch)
+
+	// collect the logical router and logical router ports metrics
+	collectLogicalRouters(ch)
 }
