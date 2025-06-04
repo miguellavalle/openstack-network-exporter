@@ -72,6 +72,7 @@ type conf struct {
 	Collectors []string          `yaml:"collectors"`
 	MetricSets []string          `yaml:"metric-sets"`
 	metricSets MetricSet         `yaml:"-"`
+	IntBrdNam  string            `yaml:"br-int-name" env:"OPENSTACK_NETWORK_EXPORTER_BR_INT_NAME"`
 }
 
 var c = conf{
@@ -82,6 +83,7 @@ var c = conf{
 	OvsProcdir: "/proc",
 	LogLevel:   "notice",
 	users:      make(map[string]string),
+	IntBrdNam:  "br-int",
 }
 
 func HttpListen() string           { return c.HttpListen }
@@ -95,6 +97,7 @@ func Collectors() []string         { return c.Collectors }
 func LogLevel() syslog.Priority    { return c.logLevel }
 func AuthUsers() map[string]string { return c.users }
 func MetricSets() MetricSet        { return c.metricSets }
+func IntBrdNam() string            { return c.IntBrdNam }
 
 func Parse() error {
 	path, configInEnv := os.LookupEnv("OPENSTACK_NETWORK_EXPORTER_YAML")
