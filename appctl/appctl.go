@@ -24,6 +24,7 @@ const (
 	ovsVswitchd   appctlDaemon = "ovs-vswitchd"
 	ovnController appctlDaemon = "ovn-controller"
 	ovnNorthd     appctlDaemon = "ovn-northd"
+	ovsDbServer   appctlDaemon = "ovsdb-server"
 )
 
 func getPidFromFile(pidfile string) (int, error) {
@@ -75,8 +76,40 @@ func getPidFromCtlFiles(rundir string, daemon appctlDaemon) (int, error) {
 	return 0, fmt.Errorf("could not extract PID from control socket files for %s", daemon)
 }
 
+func prepareCallDbServer(method string, rundir string, args ...string) (string, []string, error) {
+
+	const (
+		ovnsbDb       = "OVN_Southbound"
+		ovnnbDb       = "OVN_Northbound"
+		clusterStatus = "cluster/status"
+	)
+
+	// Check which socket file exists
+	sbSocket := filepath.Join(rundir, "ovnsb_db.ctl")
+	nbSocket := filepath.Join(rundir, "ovnnb_db.ctl")
+
+	var sockpath string
+	var dbName string
+
+	if _, err := os.Stat(sbSocket); err == nil {
+		sockpath = sbSocket
+		dbName = ovnsbDb
+	} else if _, err := os.Stat(nbSocket); err == nil {
+		sockpath = nbSocket
+		dbName = ovnnbDb
+	} else {
+		return "", args, fmt.Errorf("no control socket files found for the ovs db server")
+	}
+
+	if method == clusterStatus {
+		args = []string{dbName}
+	}
+
+	return sockpath, args, nil
+}
+
 func call(daemon appctlDaemon, method string, args ...string) string {
-	var rundir string
+	var rundir, sockpath string
 	var err error
 
 	switch daemon {
@@ -86,25 +119,36 @@ func call(daemon appctlDaemon, method string, args ...string) string {
 		rundir = config.OvnRundir()
 	case ovnNorthd:
 		rundir = config.OvnRundir()
+	case ovsDbServer:
+		rundir = config.OvsdbRundir()
 	default:
 		panic(fmt.Errorf("unknown daemon value: %v", daemon))
 	}
 
-	pidfile := filepath.Join(rundir, fmt.Sprintf("%s.pid", daemon))
-
-	// First try to get PID from .pid file
-	pid, err := getPidFromFile(pidfile)
-	if err != nil {
-		log.Debugf("Failed to read PID file %s: %s, trying to find PID from .ctl files", pidfile, err)
-		// If that fails, try to extract PID from .ctl files
-		pid, err = getPidFromCtlFiles(rundir, daemon)
+	if daemon == ovsDbServer {
+		sockpath, args, err = prepareCallDbServer(method, rundir, args...)
 		if err != nil {
-			log.Errf("Failed to get PID for %s: %s", daemon, err)
+			log.Errf("Failed to prepare call to %s: %s", daemon, err)
 			return ""
 		}
+	} else {
+		pidfile := filepath.Join(rundir, fmt.Sprintf("%s.pid", daemon))
+
+		// First try to get PID from .pid file
+		pid, err := getPidFromFile(pidfile)
+		if err != nil {
+			log.Debugf("Failed to read PID file %s: %s, trying to find PID from .ctl files", pidfile, err)
+			// If that fails, try to extract PID from .ctl files
+			pid, err = getPidFromCtlFiles(rundir, daemon)
+			if err != nil {
+				log.Errf("Failed to get PID for %s: %s", daemon, err)
+				return ""
+			}
+		}
+
+		sockpath = filepath.Join(rundir, fmt.Sprintf("%s.%d.ctl", daemon, pid))
 	}
 
-	sockpath := filepath.Join(rundir, fmt.Sprintf("%s.%d.ctl", daemon, pid))
 	conn, err := net.Dial("unix", sockpath)
 	if err != nil {
 		log.Errf("net.Dial: %s", err)
@@ -144,4 +188,8 @@ func OvnController(method string, args ...string) string {
 
 func OvnNorthd(method string, args ...string) string {
 	return call(ovnNorthd, method, args...)
+}
+
+func OvsDbServer(method string, args ...string) string {
+	return call(ovsDbServer, method, args...)
 }
